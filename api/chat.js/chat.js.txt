@@ -1,66 +1,61 @@
 import OpenAI from "openai";
-import { createClient } from "@supabase/supabase-js";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
-
 export default async function handler(req, res) {
 
   res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  const { user_id, message } = req.body;
-
-  if (!message) {
-    return res.status(400).json({ error: "no message" });
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
   }
 
-  // 1. guardar mensaje usuario
-  await supabase.from("messages").insert({
-    user_id,
-    role: "user",
-    content: message
-  });
+  if (req.method !== "POST") {
+    return res.status(200).json({
+      ok: true,
+      message: "API funcionando"
+    });
+  }
 
-  // 2. traer historial
-  const { data: history } = await supabase
-    .from("messages")
-    .select("*")
-    .eq("user_id", user_id)
-    .order("created_at", { ascending: true })
-    .limit(20);
+  try {
 
-  // 3. formatear historial
-  const messages = history.map(m => ({
-    role: m.role,
-    content: m.content
-  }));
+    const { message } = req.body;
 
-  // 4. pedir respuesta a la IA
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content: "Eres un asistente emocional que ayuda a personas en ruptura a no actuar impulsivamente."
-      },
-      ...messages
-    ]
-  });
+    if (!message) {
+      return res.status(400).json({
+        error: "No message"
+      });
+    }
 
-  const reply = response.choices[0].message.content;
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "Eres un asistente emocional para rupturas amorosas."
+        },
+        {
+          role: "user",
+          content: message
+        }
+      ]
+    });
 
-  // 5. guardar respuesta IA
-  await supabase.from("messages").insert({
-    user_id,
-    role: "assistant",
-    content: reply
-  });
+    const reply = response.choices[0].message.content;
 
-  res.json({ reply });
+    return res.status(200).json({
+      reply
+    });
+
+  } catch (error) {
+
+    return res.status(500).json({
+      error: error.message
+    });
+
+  }
 }
